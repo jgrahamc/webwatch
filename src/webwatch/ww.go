@@ -18,8 +18,8 @@ import (
 )
 
 // report adds a message (printf style) to message to be emailed
-func report(msg *string, format string, values... interface{}) {
-	add := fmt.Sprintf(format + "\n", values...)
+func report(msg *string, format string, values ...interface{}) {
+	add := fmt.Sprintf(format+"\n", values...)
 	log.Printf(add)
 	*msg += add
 }
@@ -48,12 +48,12 @@ Subject: WARNING! String %s found in URL %s
 
 func main() {
 	url := flag.String("url", "", "URL to check")
-    warn := flag.String("warn", "",
+	warn := flag.String("warn", "",
 		"Send email if this string is found in the web page")
 	from := flag.String("from", "", "Email addresses to send from")
 	to := flag.String("to", "",
 		"Comma-separated list of email addresses to send to")
-	smtpServer := flag.String("smtp", "gmail-smtp-in.l.google.com:25", 
+	smtpServer := flag.String("smtp", "gmail-smtp-in.l.google.com:25",
 		"Address of SMTP server to use (host:port)")
 	flag.Parse()
 
@@ -88,7 +88,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read body of the URL %s: %s", *url, err)
 	}
-	
+
 	if strings.Contains(string(body), *warn) {
 		var msg string
 		report(&msg, "Found %s in %s", *warn, *url)
