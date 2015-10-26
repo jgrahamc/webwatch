@@ -8,7 +8,7 @@ and send email if it does.
 Grab https://www.cloudflare.com/ and see if it contains "Breaking
 News" and send email if it does.
 
-```webwatch -url=https://www.cloudflare.com/ -warn="Breaking News" -from=fictitious_account@gmail.com -to=some_account@gmail.com```
+```webwatch -url=https://www.cloudflare.com/ -warn="Breaking News" -from=alice@example.com -to=bert@example.com```
 
 `-url`: URL to get
 
