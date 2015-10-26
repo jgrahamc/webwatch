@@ -32,13 +32,10 @@ func main() {
 	body, err := fetchAndReturnPage()
 
 	if strings.Contains(body, *warn) {
-
-		//*smtpServer, *from, *warn, *url, fullEmailContent, recipients
 		err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
 		if err != nil {
 			log.Fatalln(err)
 		}
-
 	} else {
 		fmt.Printf("%q NOT found in %s", *warn, *url)
 	}
@@ -81,6 +78,14 @@ func parseConfiguration() error {
 	return nil
 }
 
+func checkIfSMTPURLIsValid() error {
+	_, _, err := net.SplitHostPort(*smtpServer)
+	if err != nil {
+		return errors.New(fmt.Sprintf("The -smtp parameter must have format host:port: %s", err))
+	}
+	return nil
+}
+
 func parseRecipients() {
 	recipients = strings.Split(*to, ",")
 }
@@ -88,14 +93,6 @@ func parseRecipients() {
 func refactorRecipients() {
 	toHeaderValue := strings.Join(recipients, ", ")
 	*to = toHeaderValue
-}
-
-func checkIfSMTPURLIsValid() error {
-	_, _, err := net.SplitHostPort(*smtpServer)
-	if err != nil {
-		return errors.New(fmt.Sprintf("The -smtp parameter must have format host:port: %s", err))
-	}
-	return nil
 }
 
 func fetchAndReturnPage() (string, error) {
@@ -112,8 +109,6 @@ func fetchAndReturnPage() (string, error) {
 }
 
 // sendReportWithMessage sends any report of whois differences via email
-
-//server, from, warn, url, fullEmailContent string, to []string
 func sendReportWithMessage(format string, values ...interface{}) error {
 	fullEmailContent := createAndReturnHeader() + createAndReturnMessage(format, values...)
 	fmt.Println(fullEmailContent)
