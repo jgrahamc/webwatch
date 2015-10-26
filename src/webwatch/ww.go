@@ -19,50 +19,9 @@ import (
 )
 
 var (
-	message, fullEmailContent       string
 	url, warn, from, to, smtpServer *string
 	recipients                      []string
 )
-
-// sendReport sends any report of whois differences via email
-
-//server, from, warn, url, fullEmailContent string, to []string
-func sendReport() error {
-	if fullEmailContent == "" {
-		return errors.New("")
-	}
-
-	toHeaderValue := strings.Join(recipients, ", ")
-
-	emailHeaderFormat := `From: %s
-To: %s
-Date: %s
-Subject: WARNING! String %q found in URL %s
-
-`
-	header := fmt.Sprintf(emailHeaderFormat, *from, toHeaderValue, time.Now().Format(time.RFC822Z), *warn, *url)
-
-	fullEmailContent = header + fullEmailContent
-
-	//<DEBUG>
-	fmt.Println(fullEmailContent)
-	//</DEBUG>
-
-	err := smtp.SendMail(*smtpServer, nil, *from, recipients, []byte(fullEmailContent))
-	if err != nil {
-		log.Printf("Error sending message from %s to %s via %s: %s",
-			*from, toHeaderValue, *smtpServer, err)
-	}
-
-	return nil
-}
-
-// addMessageToReport adds a message (printf style) to message to be emailed
-func addMessageToReport(format string, values ...interface{}) {
-	add := fmt.Sprintf(format+"\n", values...)
-	log.Printf(add)
-	fullEmailContent += add
-}
 
 func main() {
 	err := parseConfiguration()
@@ -70,13 +29,12 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	body, err := fetchPage()
+	body, err := fetchAndReturnPage()
 
 	if strings.Contains(body, *warn) {
-		addMessageToReport("%q FOUND in %s", *warn, *url)
 
 		//*smtpServer, *from, *warn, *url, fullEmailContent, recipients
-		err = sendReport()
+		err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -86,37 +44,17 @@ func main() {
 	}
 }
 
-func fetchPage() (string, error) {
-	page, err := http.Get(*url)
-	if err != nil {
-		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
-	}
-	defer page.Body.Close()
-
-	body, err := ioutil.ReadAll(page.Body)
-	if err != nil {
-		return "", errors.New(fmt.Sprintf("Failed to read body of the URL %s: %s", *url, err))
-	}
-
-	return string(body), nil
-}
-
 func parseConfiguration() error {
 	url = flag.String("url", "",
 		"URL to check")
-
 	warn = flag.String("warn", "",
 		"Send email if this string is found in the web page")
-
 	from = flag.String("from", "",
 		"Email addresses to send from")
-
 	to = flag.String("to", "",
 		"Comma-separated list of email addresses to send to")
-
 	smtpServer = flag.String("smtp", "gmail-smtp-in.l.google.com:25",
 		"Address of SMTP server to use (host:port)")
-
 	flag.Parse()
 
 	if len(*warn) < 1 {
@@ -138,6 +76,7 @@ func parseConfiguration() error {
 	}
 
 	parseRecipients()
+	refactorRecipients()
 
 	return nil
 }
@@ -146,10 +85,66 @@ func parseRecipients() {
 	recipients = strings.Split(*to, ",")
 }
 
+func refactorRecipients() {
+	toHeaderValue := strings.Join(recipients, ", ")
+	*to = toHeaderValue
+}
+
 func checkIfSMTPURLIsValid() error {
 	_, _, err := net.SplitHostPort(*smtpServer)
 	if err != nil {
 		return errors.New(fmt.Sprintf("The -smtp parameter must have format host:port: %s", err))
+	}
+	return nil
+}
+
+func fetchAndReturnPage() (string, error) {
+	page, err := http.Get(*url)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
+	}
+	defer page.Body.Close()
+	body, err := ioutil.ReadAll(page.Body)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed to read body of the URL %s: %s", *url, err))
+	}
+	return string(body), nil
+}
+
+// sendReportWithMessage sends any report of whois differences via email
+
+//server, from, warn, url, fullEmailContent string, to []string
+func sendReportWithMessage(format string, values ...interface{}) error {
+	fullEmailContent := createAndReturnHeader() + createAndReturnMessage(format, values...)
+	fmt.Println(fullEmailContent)
+	err := sendReportEmailThroughSMTP(fullEmailContent)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func createAndReturnHeader() string {
+	emailHeaderFormat := `From: %s
+To: %s
+Date: %s
+Subject: WARNING! String %q found in URL %s
+
+`
+	header := fmt.Sprintf(emailHeaderFormat, *from, *to, time.Now().Format(time.RFC822Z), *warn, *url)
+	return header
+}
+
+func createAndReturnMessage(format string, values ...interface{}) string {
+	message := fmt.Sprintf(format+"\n", values...)
+	return message
+}
+
+func sendReportEmailThroughSMTP(fullEmailContent string) error {
+	err := smtp.SendMail(*smtpServer, nil, *from, recipients, []byte(fullEmailContent))
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error sending message from %s to %s via %s: %s",
+			*from, *to, *smtpServer, err))
 	}
 	return nil
 }
