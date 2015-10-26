@@ -20,7 +20,9 @@ import (
 
 var (
 	url, warn, from, to, smtpServer *string
+	repetitions                     *int
 	recipients                      []string
+	client                          *http.Client
 )
 
 func main() {
@@ -29,15 +31,31 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	body, err := fetchAndReturnPage()
+	client = &http.Client{
+		Timeout: time.Duration(5 * time.Second),
+	}
+	repetitionsCount := 0
 
-	if strings.Contains(body, *warn) {
-		err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
-		if err != nil {
-			log.Fatalln(err)
+	for {
+
+		body, err := fetchAndReturnPage()
+
+		if strings.Contains(body, *warn) {
+			err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			break
+		} else {
+			log.Printf("%q NOT found in %s\n", *warn, *url)
 		}
-	} else {
-		log.Printf("%q NOT found in %s", *warn, *url)
+
+		repetitionsCount++
+		if repetitionsCount >= *repetitions {
+			break
+		}
+
+		time.Sleep(time.Second * 2)
 	}
 }
 
@@ -52,6 +70,10 @@ func parseAndValidateConfiguration() error {
 		"Comma-separated list of email addresses to send to")
 	smtpServer = flag.String("smtp", "gmail-smtp-in.l.google.com:25",
 		"Address of SMTP server to use (host:port)")
+
+	repetitions = flag.Int("repetitions", 1,
+		"Repetitions of the load-search function")
+
 	flag.Parse()
 
 	if len(*warn) < 1 {
@@ -96,7 +118,14 @@ func refactorRecipients() {
 }
 
 func fetchAndReturnPage() (string, error) {
-	page, err := http.Get(*url)
+	request, err := http.NewRequest("GET", *url, nil)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
+	}
+	request.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 7.0; WOW64) AppleWebKit/537.35 (KHTML, like Gecko) Chrome/31.0.2049.16 Safari/537.35")
+
+	page, err := client.Do(request)
 	if err != nil {
 		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
 	}
