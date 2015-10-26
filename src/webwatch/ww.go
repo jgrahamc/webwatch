@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -17,81 +18,138 @@ import (
 	"time"
 )
 
-// report adds a message (printf style) to message to be emailed
-func report(msg *string, format string, values ...interface{}) {
-	add := fmt.Sprintf(format+"\n", values...)
-	log.Printf(add)
-	*msg += add
-}
+var (
+	message, fullEmailContent       string
+	url, warn, from, to, smtpServer *string
+	recipients                      []string
+)
 
 // sendReport sends any report of whois differences via email
-func sendReport(server, from, warn, url, msg string, to []string) {
-	if msg == "" {
-		return
+
+//server, from, warn, url, fullEmailContent string, to []string
+func sendReport() error {
+	if fullEmailContent == "" {
+		return errors.New("")
 	}
 
-	t := strings.Join(to, ", ")
-	header := fmt.Sprintf(`From: %s
+	toHeaderValue := strings.Join(recipients, ", ")
+
+	emailHeaderFormat := `From: %s
 To: %s
 Date: %s
-Subject: WARNING! String %s found in URL %s
+Subject: WARNING! String %q found in URL %s
 
-`, from, t, time.Now().Format(time.RFC822Z), warn, url)
+`
+	header := fmt.Sprintf(emailHeaderFormat, *from, toHeaderValue, time.Now().Format(time.RFC822Z), *warn, *url)
 
-	msg = header + msg
-	err := smtp.SendMail(server, nil, from, to, []byte(msg))
+	fullEmailContent = header + fullEmailContent
+
+	//<DEBUG>
+	fmt.Println(fullEmailContent)
+	//</DEBUG>
+
+	err := smtp.SendMail(*smtpServer, nil, *from, recipients, []byte(fullEmailContent))
 	if err != nil {
 		log.Printf("Error sending message from %s to %s via %s: %s",
-			from, t, server, err)
+			*from, toHeaderValue, *smtpServer, err)
 	}
+
+	return nil
+}
+
+// addMessageToReport adds a message (printf style) to message to be emailed
+func addMessageToReport(format string, values ...interface{}) {
+	add := fmt.Sprintf(format+"\n", values...)
+	log.Printf(add)
+	fullEmailContent += add
 }
 
 func main() {
-	url := flag.String("url", "", "URL to check")
-	warn := flag.String("warn", "",
-		"Send email if this string is found in the web page")
-	from := flag.String("from", "", "Email addresses to send from")
-	to := flag.String("to", "",
-		"Comma-separated list of email addresses to send to")
-	smtpServer := flag.String("smtp", "gmail-smtp-in.l.google.com:25",
-		"Address of SMTP server to use (host:port)")
-	flag.Parse()
-
-	if *warn == "" {
-		log.Fatalf("The -warn parameter is required")
-	}
-	if *to == "" {
-		log.Fatalf("The -to parameter is required")
-	}
-	if *from == "" {
-		log.Fatalf("The -from parameter is required")
-	}
-	if *url == "" {
-		log.Fatalf("The -url parameter is required")
-	}
-
-	_, _, err := net.SplitHostPort(*smtpServer)
+	err := parseConfiguration()
 	if err != nil {
-		log.Fatalf("The -smtp parameter must have format host:port: %s",
-			err)
+		log.Fatalln(err)
 	}
 
-	recipients := strings.Split(*to, ",")
+	body, err := fetchPage()
 
+	if strings.Contains(body, *warn) {
+		addMessageToReport("%q FOUND in %s", *warn, *url)
+
+		//*smtpServer, *from, *warn, *url, fullEmailContent, recipients
+		err = sendReport()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+	} else {
+		fmt.Printf("%q NOT found in %s", *warn, *url)
+	}
+}
+
+func fetchPage() (string, error) {
 	page, err := http.Get(*url)
 	if err != nil {
-		log.Fatalf("Failed to get the URL %s: %s", *url, err)
+		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
 	}
 	defer page.Body.Close()
 
 	body, err := ioutil.ReadAll(page.Body)
 	if err != nil {
-		log.Fatalf("Failed to read body of the URL %s: %s", *url, err)
+		return "", errors.New(fmt.Sprintf("Failed to read body of the URL %s: %s", *url, err))
 	}
 
-	if strings.Contains(string(body), *warn) {
-		var msg string
-		report(&msg, "Found %s in %s", *warn, *url)
-		sendReport(*smtpServer, *from, *warn, *url, msg, recipients)
+	return string(body), nil
+}
+
+func parseConfiguration() error {
+	url = flag.String("url", "",
+		"URL to check")
+
+	warn = flag.String("warn", "",
+		"Send email if this string is found in the web page")
+
+	from = flag.String("from", "",
+		"Email addresses to send from")
+
+	to = flag.String("to", "",
+		"Comma-separated list of email addresses to send to")
+
+	smtpServer = flag.String("smtp", "gmail-smtp-in.l.google.com:25",
+		"Address of SMTP server to use (host:port)")
+
+	flag.Parse()
+
+	if len(*warn) < 1 {
+		return errors.New("The -warn parameter is required")
 	}
+	if len(*to) < 1 {
+		return errors.New("The -to parameter is required")
+	}
+	if len(*from) < 1 {
+		return errors.New("The -from parameter is required")
+	}
+	if len(*url) < 1 {
+		return errors.New("The -url parameter is required")
+	}
+
+	err := checkIfSMTPURLIsValid()
+	if err != nil {
+		return err
+	}
+
+	parseRecipients()
+
+	return nil
+}
+
+func parseRecipients() {
+	recipients = strings.Split(*to, ",")
+}
+
+func checkIfSMTPURLIsValid() error {
+	_, _, err := net.SplitHostPort(*smtpServer)
+	if err != nil {
+		return errors.New(fmt.Sprintf("The -smtp parameter must have format host:port: %s", err))
+	}
+	return nil
 }
