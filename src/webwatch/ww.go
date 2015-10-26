@@ -24,7 +24,7 @@ var (
 )
 
 func main() {
-	err := parseConfiguration()
+	err := parseAndValidateConfiguration()
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -37,11 +37,11 @@ func main() {
 			log.Fatalln(err)
 		}
 	} else {
-		fmt.Printf("%q NOT found in %s", *warn, *url)
+		log.Printf("%q NOT found in %s", *warn, *url)
 	}
 }
 
-func parseConfiguration() error {
+func parseAndValidateConfiguration() error {
 	url = flag.String("url", "",
 		"URL to check")
 	warn = flag.String("warn", "",
@@ -111,7 +111,7 @@ func fetchAndReturnPage() (string, error) {
 // sendReportWithMessage sends any report of whois differences via email
 func sendReportWithMessage(format string, values ...interface{}) error {
 	fullEmailContent := createAndReturnHeader() + createAndReturnMessage(format, values...)
-	fmt.Println(fullEmailContent)
+	log.Println(fullEmailContent)
 	err := sendReportEmailThroughSMTP(fullEmailContent)
 	if err != nil {
 		return err
