@@ -12,7 +12,7 @@ News" and send email if it does.
 
 `-url`: URL to get
 
-`-warn`: string to seach in the page
+`-warn`: string to search in the page
 
 `-from`: From address for the email
 
