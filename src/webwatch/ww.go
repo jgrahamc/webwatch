@@ -58,7 +58,7 @@ func main() {
 	flag.Parse()
 
 	if *warn == "" {
-		log.Fatalf("The -expect parameter is required")
+		log.Fatalf("The -warn parameter is required")
 	}
 	if *to == "" {
 		log.Fatalf("The -to parameter is required")
