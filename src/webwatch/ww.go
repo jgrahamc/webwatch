@@ -79,7 +79,7 @@ func parseAndValidateConfiguration() error {
 		return err
 	}
 	parseRecipients()
-	nicelySpaceCommas()
+	nicelySpaceCommasOfThe_to_Parameter()
 
 	return nil
 }
@@ -94,7 +94,7 @@ func checkIfSMTPURLIsValid() error {
 func parseRecipients() {
 	recipients = strings.Split(*to, ",")
 }
-func nicelySpaceCommas() {
+func nicelySpaceCommasOfThe_to_Parameter() {
 	*to = strings.Join(recipients, ", ")
 	//*to will be used again in the email header
 }
