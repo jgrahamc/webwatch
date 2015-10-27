@@ -8,7 +8,7 @@ and send email if it does.
 Grab https://www.cloudflare.com/ and see if it contains "Breaking
 News" and send email if it does.
 
-```webwatch -url=https://www.cloudflare.com/ -warn="Breaking News" -from=alice@example.com -to=bert@example.com -repetitions=3```
+```webwatch -url=https://www.cloudflare.com/ -warn="Breaking News" -from=alice@example.com -to=bert@example.com```
 
 `-url`: URL to get
 
@@ -19,5 +19,3 @@ News" and send email if it does.
 `-to`: List of comma-separated addresses to send mail to
 
 `-smtp`: The SMTP server to use
-
-`-repetitions`: How many time you want to repeat this search

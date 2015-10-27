@@ -20,7 +20,6 @@ import (
 
 var (
 	url, warn, from, to, smtpServer *string
-	repetitions                     *int
 	recipients                      []string
 	client                          *http.Client
 )
@@ -34,29 +33,18 @@ func main() {
 	client = &http.Client{
 		Timeout: time.Duration(5 * time.Second),
 	}
-	repetitionsCount := 0
 
-	for {
+	body, err := fetchAndReturnPage()
 
-		body, err := fetchAndReturnPage()
-
-		if strings.Contains(body, *warn) {
-			err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			break
-		} else {
-			log.Printf("%q NOT found in %s\n", *warn, *url)
+	if strings.Contains(body, *warn) {
+		err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
+		if err != nil {
+			log.Fatalln(err)
 		}
-
-		repetitionsCount++
-		if repetitionsCount >= *repetitions {
-			break
-		}
-
-		time.Sleep(time.Second * 2)
+	} else {
+		log.Printf("%q NOT found in %s\n", *warn, *url)
 	}
+
 }
 
 func parseAndValidateConfiguration() error {
@@ -71,21 +59,18 @@ func parseAndValidateConfiguration() error {
 	smtpServer = flag.String("smtp", "gmail-smtp-in.l.google.com:25",
 		"Address of SMTP server to use (host:port)")
 
-	repetitions = flag.Int("repetitions", 1,
-		"Repetitions of the load-search function")
-
 	flag.Parse()
 
-	if len(*warn) < 1 {
+	if *warn == "" {
 		return errors.New("The -warn parameter is required")
 	}
-	if len(*to) < 1 {
+	if *to == "" {
 		return errors.New("The -to parameter is required")
 	}
-	if len(*from) < 1 {
+	if *from == "" {
 		return errors.New("The -from parameter is required")
 	}
-	if len(*url) < 1 {
+	if *url == "" {
 		return errors.New("The -url parameter is required")
 	}
 
@@ -139,7 +124,7 @@ func fetchAndReturnPage() (string, error) {
 
 // sendReportWithMessage sends any report of whois differences via email
 func sendReportWithMessage(format string, values ...interface{}) error {
-	fullEmailContent := createAndReturnHeader() + createAndReturnMessage(format, values...)
+	fullEmailContent := createAndReturnMessageHeader() + createAndReturnMessage(format, values...)
 	log.Println(fullEmailContent)
 	err := sendReportEmailThroughSMTP(fullEmailContent)
 	if err != nil {
@@ -148,7 +133,7 @@ func sendReportWithMessage(format string, values ...interface{}) error {
 	return nil
 }
 
-func createAndReturnHeader() string {
+func createAndReturnMessageHeader() string {
 	emailHeaderFormat := `From: %s
 To: %s
 Date: %s
