@@ -25,8 +25,7 @@ var (
 )
 
 func main() {
-	err := parseAndValidateConfiguration()
-	if err != nil {
+	if err := parseAndValidateConfiguration(); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -35,10 +34,12 @@ func main() {
 	}
 
 	body, err := fetchAndReturnPage()
+	if err != nil {
+		log.Println(err)
+	}
 
 	if strings.Contains(body, *warn) {
-		err = sendReportWithMessage("%q FOUND in %s", *warn, *url)
-		if err != nil {
+		if err = sendReportWithMessage("%q FOUND in %s", *warn, *url); err != nil {
 			log.Fatalln(err)
 		}
 	} else {
@@ -74,13 +75,11 @@ func parseAndValidateConfiguration() error {
 		return errors.New("The -url parameter is required")
 	}
 
-	err := checkIfSMTPURLIsValid()
-	if err != nil {
+	if err := checkIfSMTPURLIsValid(); err != nil {
 		return err
 	}
-
 	parseRecipients()
-	refactorRecipients()
+	nicelySpaceCommas()
 
 	return nil
 }
@@ -88,36 +87,34 @@ func parseAndValidateConfiguration() error {
 func checkIfSMTPURLIsValid() error {
 	_, _, err := net.SplitHostPort(*smtpServer)
 	if err != nil {
-		return errors.New(fmt.Sprintf("The -smtp parameter must have format host:port: %s", err))
+		return fmt.Errorf("The -smtp parameter must have format host:port: %s", err)
 	}
 	return nil
 }
-
 func parseRecipients() {
 	recipients = strings.Split(*to, ",")
 }
-
-func refactorRecipients() {
-	toHeaderValue := strings.Join(recipients, ", ")
-	*to = toHeaderValue
+func nicelySpaceCommas() {
+	*to = strings.Join(recipients, ", ")
+	//*to will be used again in the email header
 }
 
 func fetchAndReturnPage() (string, error) {
 	request, err := http.NewRequest("GET", *url, nil)
 	if err != nil {
 		log.Println(err)
-		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
+		return "", fmt.Errorf("Failed to get the URL %s: %s", *url, err)
 	}
 	request.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 7.0; WOW64) AppleWebKit/537.35 (KHTML, like Gecko) Chrome/31.0.2049.16 Safari/537.35")
 
 	page, err := client.Do(request)
 	if err != nil {
-		return "", errors.New(fmt.Sprintf("Failed to get the URL %s: %s", *url, err))
+		return "", fmt.Errorf("Failed to get the URL %s: %s", *url, err)
 	}
 	defer page.Body.Close()
 	body, err := ioutil.ReadAll(page.Body)
 	if err != nil {
-		return "", errors.New(fmt.Sprintf("Failed to read body of the URL %s: %s", *url, err))
+		return "", fmt.Errorf("Failed to read body of the URL %s: %s", *url, err)
 	}
 	return string(body), nil
 }
@@ -152,8 +149,8 @@ func createAndReturnMessage(format string, values ...interface{}) string {
 func sendReportEmailThroughSMTP(fullEmailContent string) error {
 	err := smtp.SendMail(*smtpServer, nil, *from, recipients, []byte(fullEmailContent))
 	if err != nil {
-		return errors.New(fmt.Sprintf("Error sending message from %s to %s via %s: %s",
-			*from, *to, *smtpServer, err))
+		return fmt.Errorf("Error sending message from %s to %s via %s: %s",
+			*from, *to, *smtpServer, err)
 	}
 	return nil
 }
