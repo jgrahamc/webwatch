@@ -10,88 +10,92 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/smtp"
 	"strings"
 	"time"
 )
 
-// report adds a message (printf style) to message to be emailed
-func report(msg *string, format string, values ...interface{}) {
-	add := fmt.Sprintf(format+"\n", values...)
-	log.Printf(add)
-	*msg += add
+// Construct the message to send from the parameters. The message headers are
+// written one-by-one followed by an empty line and the message body.
+func buildMessage(url, warn, from, to string) string {
+	var m string
+	for k, v := range map[string]string{
+		"Date":         time.Now().Format(time.RFC822Z),
+		"From":         from,
+		"To":           to,
+		"Subject":      fmt.Sprintf("WARNING! %s found in %s", warn, url),
+		"Content-Type": "text/plain; charset=\"utf-8\"",
+	} {
+		m += fmt.Sprintf("%s: %s\r\n", k, v)
+	}
+	m += "\r\n"
+	m += fmt.Sprintf("Found %s in %s", warn, url)
+	return m
 }
 
-// sendReport sends any report of whois differences via email
-func sendReport(server, from, warn, url, msg string, to []string) {
-	if msg == "" {
-		return
+// Send the message to the specified recipients.
+func sendMessage(smtpServer, username, password, from, to, m string) error {
+	var auth smtp.Auth
+	if username != "" && password != "" {
+		auth = smtp.PlainAuth("", username, password, smtpServer)
 	}
+	return smtp.SendMail(
+		smtpServer,
+		auth,
+		from,
+		strings.Split(to, ","),
+		[]byte(m),
+	)
+}
 
-	t := strings.Join(to, ", ")
-	header := fmt.Sprintf(`From: %s
-To: %s
-Date: %s
-Subject: WARNING! String %s found in URL %s
-
-`, from, t, time.Now().Format(time.RFC822Z), warn, url)
-
-	msg = header + msg
-	err := smtp.SendMail(server, nil, from, to, []byte(msg))
+// Retrieve the contents of the specified page.
+func fetchPage(url string) ([]byte, error) {
+	p, err := http.Get(url)
 	if err != nil {
-		log.Printf("Error sending message from %s to %s via %s: %s",
-			from, t, server, err)
+		return nil, err
 	}
+	defer p.Body.Close()
+	b, err := ioutil.ReadAll(p.Body)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 func main() {
-	url := flag.String("url", "", "URL to check")
-	warn := flag.String("warn", "",
-		"Send email if this string is found in the web page")
-	from := flag.String("from", "", "Email addresses to send from")
-	to := flag.String("to", "",
-		"Comma-separated list of email addresses to send to")
-	smtpServer := flag.String("smtp", "gmail-smtp-in.l.google.com:25",
-		"Address of SMTP server to use (host:port)")
+	var (
+		url        = flag.String("url", "", "`URL` to check")
+		warn       = flag.String("warn", "", "Send email if this `string` is found in the web page")
+		from       = flag.String("from", "", "Email `address` to send from")
+		to         = flag.String("to", "", "Comma-separated list of email `addresses` to send to")
+		smtpServer = flag.String("smtp", "gmail-smtp-in.l.google.com:25", "Address of SMTP `server` to use (host:port)")
+		username   = flag.String("username", "", "`Username` for SMTP server")
+		password   = flag.String("password", "", "`Password` for SMTP server")
+	)
 	flag.Parse()
 
-	if *warn == "" {
-		log.Fatalf("The -warn parameter is required")
-	}
-	if *to == "" {
-		log.Fatalf("The -to parameter is required")
-	}
-	if *from == "" {
-		log.Fatalf("The -from parameter is required")
-	}
-	if *url == "" {
-		log.Fatalf("The -url parameter is required")
+	// Ensure the minimum arguments were provided.
+	if *url == "" || *warn == "" || *from == "" || *to == "" {
+		log.Fatalln("-url, -warn, -from, and -to must be provided")
 	}
 
-	_, _, err := net.SplitHostPort(*smtpServer)
+	// Fetch the contents of the page
+	b, err := fetchPage(*url)
 	if err != nil {
-		log.Fatalf("The -smtp parameter must have format host:port: %s",
-			err)
+		log.Fatalf("Failed to fetch %s: %s\n", *url, err)
 	}
 
-	recipients := strings.Split(*to, ",")
+	// Check for the search term
+	if strings.Contains(string(b), *warn) {
 
-	page, err := http.Get(*url)
-	if err != nil {
-		log.Fatalf("Failed to get the URL %s: %s", *url, err)
-	}
-	defer page.Body.Close()
+		// Build the message
+		m := buildMessage(*url, *warn, *from, *to)
 
-	body, err := ioutil.ReadAll(page.Body)
-	if err != nil {
-		log.Fatalf("Failed to read body of the URL %s: %s", *url, err)
-	}
-
-	if strings.Contains(string(body), *warn) {
-		var msg string
-		report(&msg, "Found %s in %s", *warn, *url)
-		sendReport(*smtpServer, *from, *warn, *url, msg, recipients)
+		// Send the message
+		err = sendMessage(*smtpServer, *username, *password, *from, *to, m)
+		if err != nil {
+			log.Fatalf("Failed to send message: %s\n", err)
+		}
 	}
 }
