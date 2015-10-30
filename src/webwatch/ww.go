@@ -12,9 +12,13 @@ import (
 	"log"
 	"net/http"
 	"net/smtp"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// This is sufficient for removing HTML tags from a document in most cases.
+var stripHtml = regexp.MustCompile(`<[^>]*>`)
 
 // Construct the message to send from the parameters. The message headers are
 // written one-by-one followed by an empty line and the message body.
@@ -65,13 +69,15 @@ func fetchPage(url string) ([]byte, error) {
 
 func main() {
 	var (
-		url        = flag.String("url", "", "`URL` to check")
-		warn       = flag.String("warn", "", "Send email if this `string` is found in the web page")
-		from       = flag.String("from", "", "Email `address` to send from")
-		to         = flag.String("to", "", "Comma-separated list of email `addresses` to send to")
-		smtpServer = flag.String("smtp", "gmail-smtp-in.l.google.com:25", "Address of SMTP `server` to use (host:port)")
-		username   = flag.String("username", "", "`Username` for SMTP server")
-		password   = flag.String("password", "", "`Password` for SMTP server")
+		url           = flag.String("url", "", "`URL` to check")
+		warn          = flag.String("warn", "", "Send email if this `string` is found in the web page")
+		from          = flag.String("from", "", "Email `address` to send from")
+		to            = flag.String("to", "", "Comma-separated list of email `addresses` to send to")
+		smtpServer    = flag.String("smtp", "gmail-smtp-in.l.google.com:25", "Address of SMTP `server` to use (host:port)")
+		username      = flag.String("username", "", "`Username` for SMTP server")
+		password      = flag.String("password", "", "`Password` for SMTP server")
+		preserveHtml  = flag.Bool("preserve-html", false, "don't strip HTML tags")
+		caseSensitive = flag.Bool("case-sensitive", false, "match string case")
 	)
 	flag.Parse()
 
@@ -86,8 +92,21 @@ func main() {
 		log.Fatalf("Failed to fetch %s: %s\n", *url, err)
 	}
 
+	content := string(b)
+
+	// Unless preserveHtml was set, strip HTML tags from the page
+	if !*preserveHtml {
+		content = stripHtml.ReplaceAllLiteralString(content, "")
+	}
+
+	// Unless caseSensitive was set, convert both the string and content to lowercase
+	if !*caseSensitive {
+		*warn = strings.ToLower(*warn)
+		content = strings.ToLower(content)
+	}
+
 	// Check for the search term
-	if strings.Contains(string(b), *warn) {
+	if strings.Contains(content, *warn) {
 
 		// Build the message
 		m := buildMessage(*url, *warn, *from, *to)
